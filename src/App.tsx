@@ -53,8 +53,8 @@ const OFF_SHIFT = { id: 'OFF', name: '休假', time: '', hours: 0, type: 'ALL', 
 const INITIAL_SHIFTS = [
   { id: 'S1', name: '早班(值班)', time: '09:00-17:00', hours: 8, type: 'FT', required: [1, 1, 1, 1, 1, 1, 1], color: COLORS[0] },
   { id: 'S2', name: '晚班(值班)', time: '15:00-23:00', hours: 8, type: 'FT', required: [1, 1, 1, 1, 1, 1, 1], color: COLORS[1] },
-  { id: 'S3', name: '早班(支援)', time: '09:00-16:00', hours: 7, type: 'PT', required: [1, 1, 1, 1, 1, 1, 1], color: COLORS[2] },
-  { id: 'S4', name: '晚班(支援)', time: '18:00-22:00', hours: 4, type: 'PT', required: [2, 2, 2, 2, 3, 3, 3], color: COLORS[3] },
+  { id: 'S3', name: '早班', time: '09:00-16:00', hours: 7, type: 'PT', required: [1, 1, 1, 1, 1, 1, 1], color: COLORS[2] },
+  { id: 'S4', name: '晚班', time: '17:00-22:00', hours: 5, type: 'PT', required: [2, 2, 2, 2, 3, 3, 3], color: COLORS[3] },
   { id: 'M1', name: '開會', time: '10:00-12:00', hours: 0, type: 'OTHER', required: [0, 0, 0, 0, 0, 0, 0], color: 'bg-stone-200 text-stone-700 border-stone-300' },
 ];
 
@@ -345,19 +345,25 @@ export default function App() {
           let score = 0;
           if (shift.isMorning) {
               if (shift.type === 'FT') {
+                  // 值班優先給 PPT 或 FT
                   if (emp.type === 'PPT') score += 1000;
                   else if (emp.type === 'FT') score += 500;
               } else {
-                  if (emp.type === 'PT') score += 1000;
-                  else if (emp.type === 'PPT') score += 500;
+                  // 非值班（支援）可以混搭，優先給 PT 以節省正職工時，但 PPT/FT 也可以排
+                  if (emp.type === 'PT') score += 800;
+                  else if (emp.type === 'PPT') score += 400;
+                  else if (emp.type === 'FT') score += 200;
               }
           } else {
               if (shift.type === 'FT') {
+                  // 值班優先給 FT 或 PPT
                   if (emp.type === 'FT') score += 1000;
                   else if (emp.type === 'PPT') score += 500;
               } else {
-                  if (emp.type === 'PT') score += 1000;
-                  else if (emp.type === 'PPT') score += 500;
+                  // 非值班（支援）可以混搭
+                  if (emp.type === 'PT') score += 800;
+                  else if (emp.type === 'PPT') score += 400;
+                  else if (emp.type === 'FT') score += 200;
               }
           }
 
