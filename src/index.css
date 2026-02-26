@@ -1,0 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Noto Sans TC", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  /* Japanese Minimalist Palette */
+  --color-jp-bg: #F7F6F2;      /* Soft off-white */
+  --color-jp-paper: #FFFFFF;   /* Pure white */
+  --color-jp-ink: #3C3C3C;     /* Soft charcoal */
+  --color-jp-muted: #8E8E8E;   /* Muted gray */
+  --color-jp-accent: #A78B71;  /* Soft wood/earth tone */
+  --color-jp-holiday: #E67E7E; /* Soft red for holidays */
+  --color-jp-border: #E5E1DA;  /* Very light beige border */
+}
+
+@layer base {
+  body {
+    @apply bg-jp-bg text-jp-ink antialiased;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+.jp-card {
+  @apply bg-jp-paper border border-jp-border rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.04)];
+}
+
+.jp-button-primary {
+  @apply bg-jp-accent text-white px-4 py-2 rounded-md hover:opacity-90 transition-all text-sm font-medium;
+}
+
+.jp-button-secondary {
+  @apply bg-white border border-jp-border text-jp-ink px-4 py-2 rounded-md hover:bg-jp-bg transition-all text-sm font-medium;
+}
+
+/* Custom scrollbar for a cleaner look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-jp-border rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-jp-muted;
+}

@@ -1,0 +1,7 @@
+{
+  "name": "康是美智能排班系統",
+  "description": "專為門市設計的智能排班工具，支援一例一休合規檢查與 Gemini AI 影像處理功能。",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
