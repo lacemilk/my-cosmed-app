@@ -3,13 +3,15 @@ import { getFirestore } from "firebase/firestore";
 
 // TODO: 請將你在 Firebase 控制台取得的 config 貼在下方
 // 路徑：Firebase Console > 專案設定 > 一般 > 你的應用程式 > SDK 設定與配置
+// --- 這是正確的網頁版 SDK 設定方式 ---
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCkvR46qY_TToE5WyfYk2KrpyQTlKLJcqw",
+  authDomain: "cosmed-shcedule.firebaseapp.com",
+  projectId: "cosmed-shcedule",
+  storageBucket: "cosmed-shcedule.firebasestorage.app",
+  messagingSenderId: "189637362701",
+  appId: "1:189637362701:web:607f61ece812934dadc144",
+  measurementId: "G-EXSBFEZ9GC"
 };
 
 // 初始化 Firebase

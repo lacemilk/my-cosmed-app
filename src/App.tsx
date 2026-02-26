@@ -19,7 +19,7 @@ import {
 import { zhTW } from 'date-fns/locale';
 
 // --- 預設常數與資料 ---
-const DAYS_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
+const DAYS_SHORT = ['一', '二', '三', '四', '五', '六', '日'];
 
 const COLORS = [
   'bg-[#E8F5E9] text-[#2E7D32] border-[#C8E6C9]', // Soft Green
@@ -140,12 +140,17 @@ export default function App() {
     if (!editingEmp.name.trim()) return;
     
     const { isNew, ...empData } = editingEmp;
+    console.log("Saving employee:", empData);
     try {
       await setDoc(doc(db, 'employees', empData.id), empData);
-      setEmployees(prev => isNew ? [...prev, empData] : prev.map(e => e.id === empData.id ? empData : e));
+      setEmployees(prev => {
+        if (isNew) return [...prev, empData];
+        return prev.map(e => e.id === empData.id ? empData : e);
+      });
       setEditingEmp(null);
     } catch (error) {
-      alert("儲存失敗，請檢查 Firebase 權限");
+      console.error("Save Employee Error:", error);
+      alert("儲存失敗，請檢查 Firebase 權限或網路連線");
     }
   };
 
@@ -777,13 +782,8 @@ export default function App() {
                         <div className="flex flex-wrap gap-1.5">
                           {emp.preferredOff.length === 0 && <span className="text-[10px] text-jp-muted italic">未設定</span>}
                           {DAYS_SHORT.map((day, idx) => {
-                            const realIdx = (idx + 6) % 7; // Adjust to match our 0=Mon logic if needed, but wait
-                            // Current logic: emp.preferredOff stores 0-6 where 0 is Mon? 
-                            // Let's check: DAYS = ['星期一', ...] was the old one.
-                            // INITIAL_EMPLOYEES: preferredOff: [5] (Sat), [2, 6] (Wed, Sun)
-                            // So 0=Mon, 6=Sun.
                             if (!emp.preferredOff.includes(idx)) return null;
-                            return <span key={idx} className="text-[10px] px-2 py-0.5 rounded bg-jp-paper border border-jp-border text-jp-ink">週{DAYS_SHORT[(idx+1)%7]}</span>
+                            return <span key={idx} className="text-[10px] px-2 py-0.5 rounded bg-jp-paper border border-jp-border text-jp-ink">週{day}</span>
                           })}
                         </div>
                       </div>
@@ -806,10 +806,9 @@ export default function App() {
                 <div className="lg:col-span-3">
                   <label className="block text-xs font-medium text-jp-muted mb-4 uppercase tracking-wider">每日工時預算 (小時)</label>
                   <div className="grid grid-cols-7 gap-3">
-                    {DAYS_SHORT.map((day, dIdx) => {
-                      const idx = (dIdx + 6) % 7; // Mon=0
+                    {DAYS_SHORT.map((day, idx) => {
                       return (
-                        <div key={dIdx} className="bg-jp-bg p-3 rounded-lg border border-jp-border">
+                        <div key={idx} className="bg-jp-bg p-3 rounded-lg border border-jp-border">
                           <div className="text-[10px] text-jp-muted mb-2 text-center font-medium">週{day}</div>
                           <input 
                             type="number" 
@@ -893,9 +892,9 @@ export default function App() {
                         <td className="py-4 px-4">
                           {shift.type !== 'OTHER' ? (
                             <div className="flex gap-1.5">
-                              {[1,2,3,4,5,6,0].map((dayNum, dIdx) => (
+                              {DAYS_SHORT.map((day, dIdx) => (
                                 <div key={dIdx} className="flex flex-col items-center gap-1">
-                                  <span className="text-[9px] text-jp-muted">週{DAYS_SHORT[dayNum]}</span>
+                                  <span className="text-[9px] text-jp-muted">週{day}</span>
                                   <input 
                                     type="number" min="0" 
                                     value={shift.required[dIdx]} 
@@ -979,7 +978,6 @@ export default function App() {
                 <label className="block text-[11px] font-medium text-jp-muted mb-3 uppercase tracking-wider">固定休假偏好 (不可排班日)</label>
                 <div className="grid grid-cols-4 gap-2">
                   {DAYS_SHORT.map((day, idx) => {
-                    const realIdx = (idx + 6) % 7; // Mon=0
                     const isSelected = editingEmp.preferredOff.includes(idx);
                     return (
                       <button
