@@ -19,7 +19,7 @@ import {
 import { zhTW } from 'date-fns/locale';
 
 // --- 預設常數與資料 ---
-const DAYS_SHORT = ['一', '二', '三', '四', '五', '六', '日'];
+const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 
 const COLORS = [
   'bg-[#E8F5E9] text-[#2E7D32] border-[#C8E6C9]', // Soft Green
@@ -781,7 +781,7 @@ export default function App() {
                         <p className="text-[10px] text-jp-muted mb-2">固定休假偏好</p>
                         <div className="flex flex-wrap gap-1.5">
                           {emp.preferredOff.length === 0 && <span className="text-[10px] text-jp-muted italic">未設定</span>}
-                          {DAYS_SHORT.map((day, idx) => {
+                          {WEEKDAYS.map((day, idx) => {
                             if (!emp.preferredOff.includes(idx)) return null;
                             return <span key={idx} className="text-[10px] px-2 py-0.5 rounded bg-jp-paper border border-jp-border text-jp-ink">週{day}</span>
                           })}
@@ -806,7 +806,7 @@ export default function App() {
                 <div className="lg:col-span-3">
                   <label className="block text-xs font-medium text-jp-muted mb-4 uppercase tracking-wider">每日工時預算 (小時)</label>
                   <div className="grid grid-cols-7 gap-3">
-                    {DAYS_SHORT.map((day, idx) => {
+                    {WEEKDAYS.map((day, idx) => {
                       return (
                         <div key={idx} className="bg-jp-bg p-3 rounded-lg border border-jp-border">
                           <div className="text-[10px] text-jp-muted mb-2 text-center font-medium">週{day}</div>
@@ -892,7 +892,7 @@ export default function App() {
                         <td className="py-4 px-4">
                           {shift.type !== 'OTHER' ? (
                             <div className="flex gap-1.5">
-                              {DAYS_SHORT.map((day, dIdx) => (
+                              {WEEKDAYS.map((day, dIdx) => (
                                 <div key={dIdx} className="flex flex-col items-center gap-1">
                                   <span className="text-[9px] text-jp-muted">週{day}</span>
                                   <input 
@@ -977,7 +977,7 @@ export default function App() {
               <div>
                 <label className="block text-[11px] font-medium text-jp-muted mb-3 uppercase tracking-wider">固定休假偏好 (不可排班日)</label>
                 <div className="grid grid-cols-4 gap-2">
-                  {DAYS_SHORT.map((day, idx) => {
+                  {WEEKDAYS.map((day, idx) => {
                     const isSelected = editingEmp.preferredOff.includes(idx);
                     return (
                       <button
