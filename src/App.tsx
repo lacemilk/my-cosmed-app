@@ -414,6 +414,7 @@ export default function App() {
     setSchedule(newSchedule);
     saveScheduleToFirebase(newSchedule);
     checkCompliance(newSchedule, currentDate);
+    setSelectedCell(null); // 選完後自動關閉選單
   };
 
   const updateCellCustom = (empId: string, dateStr: string, updates: any) => {
@@ -428,7 +429,7 @@ export default function App() {
       }
     };
     setSchedule(newSchedule);
-    saveScheduleToFirebase(newSchedule);
+    // 這裡先不即時存 Firebase，避免打字卡頓，改由關閉選單時統一存檔
     checkCompliance(newSchedule, currentDate);
   };
 
@@ -937,7 +938,15 @@ export default function App() {
         )}
       </main>
 
-      {selectedCell && <div className="fixed inset-0 z-10 bg-transparent" onClick={() => setSelectedCell(null)} />}
+      {selectedCell && (
+        <div 
+          className="fixed inset-0 z-10 bg-transparent" 
+          onClick={() => {
+            saveScheduleToFirebase(schedule); // 關閉時統一存檔
+            setSelectedCell(null);
+          }} 
+        />
+      )}
 
       {editingEmp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-jp-ink/20 backdrop-blur-[2px] fade-in">
