@@ -245,7 +245,7 @@ export default function App() {
     try {
       const canvas = await html2canvas(element, {
         backgroundColor: '#F7F7F5',
-        scale: 1.2, // 降低倍率以加速並減小檔案體積
+        scale: 1.2,
         logging: false,
         useCORS: true,
         onclone: (clonedDoc) => {
@@ -253,7 +253,44 @@ export default function App() {
           if (el) {
             el.style.overflow = 'visible';
             el.style.width = 'auto';
-            el.style.padding = '4px';
+            el.style.padding = '16px';
+            
+            // 注入 CSS 降級
+            const styleTag = clonedDoc.createElement('style');
+            styleTag.innerHTML = `
+              * { -webkit-print-color-adjust: exact; }
+              :root {
+                --color-jp-bg: #F7F6F2 !important;
+                --color-jp-paper: #FFFFFF !important;
+                --color-jp-ink: #3C3C3C !important;
+                --color-jp-muted: #8E8E8E !important;
+                --color-jp-accent: #A78B71 !important;
+                --color-jp-holiday: #E67E7E !important;
+                --color-jp-border: #E5E1DA !important;
+              }
+            `;
+            clonedDoc.head.appendChild(styleTag);
+
+            // 遞迴處理所有子元素，將所有顏色屬性強制轉換為 rgb/rgba
+            // 這是因為 html2canvas 在解析 oklab/oklch 時會崩潰
+            const allElements = el.getElementsByTagName('*');
+            for (let i = 0; i < allElements.length; i++) {
+              const item = allElements[i] as HTMLElement;
+              const computed = window.getComputedStyle(item);
+              
+              // 處理背景色
+              if (computed.backgroundColor.includes('okl')) {
+                item.style.backgroundColor = computed.backgroundColor.replace(/okl(ab|ch)\(.*\)/g, '#FFFFFF');
+              }
+              // 處理文字顏色
+              if (computed.color.includes('okl')) {
+                item.style.color = computed.color.replace(/okl(ab|ch)\(.*\)/g, '#3C3C3C');
+              }
+              // 處理邊框顏色
+              if (computed.borderColor.includes('okl')) {
+                item.style.borderColor = computed.borderColor.replace(/okl(ab|ch)\(.*\)/g, '#E5E1DA');
+              }
+            }
           }
         }
       });
