@@ -92,6 +92,20 @@ export default function App() {
   const [editingEmp, setEditingEmp] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // === 離開提示 ===
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '您有尚未儲存的變更，確定要離開嗎？';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   // === Firebase 資料同步 ===
   
@@ -187,7 +201,7 @@ export default function App() {
       
       if (!silent) {
         setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
+        setHasUnsavedChanges(false);
       }
       console.log("Schedule saved successfully with batch");
     } catch (error) {
@@ -534,6 +548,7 @@ export default function App() {
     });
 
     setSchedule(newSchedule);
+    setHasUnsavedChanges(true);
     saveScheduleToFirebase(newSchedule);
     checkCompliance(newSchedule, targetDate);
     setSelectedCell(null);
@@ -553,6 +568,7 @@ export default function App() {
       }
     };
     setSchedule(newSchedule);
+    setHasUnsavedChanges(true);
     saveScheduleToFirebase(newSchedule);
     checkCompliance(newSchedule, currentDate);
     setSelectedCell(null); // 選完後自動關閉選單
@@ -570,6 +586,7 @@ export default function App() {
       }
     };
     setSchedule(newSchedule);
+    setHasUnsavedChanges(true);
     // 這裡先不即時存 Firebase，避免打字卡頓，改由關閉選單時統一存檔
     checkCompliance(newSchedule, currentDate);
   };
@@ -694,23 +711,23 @@ export default function App() {
                 </div>
                 <button 
                   onClick={() => saveScheduleToFirebase(schedule, false)} 
-                  disabled={saveStatus !== 'idle'}
+                  disabled={saveStatus === 'saving'}
                   className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md border transition-all duration-200 ${
-                    saveStatus === 'saved' 
+                    !hasUnsavedChanges && saveStatus === 'saved' 
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-600' 
                       : saveStatus === 'saving'
                       ? 'bg-jp-bg border-jp-border text-jp-muted cursor-wait'
-                      : 'bg-white border-jp-border text-jp-ink hover:bg-jp-bg'
+                      : 'bg-jp-accent text-white border-jp-accent shadow-sm hover:shadow-md'
                   }`}
                 >
                   {saveStatus === 'saving' ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : saveStatus === 'saved' ? (
+                  ) : (!hasUnsavedChanges && saveStatus === 'saved') ? (
                     <CheckCircle2 className="w-4 h-4" />
                   ) : (
                     <History className="w-4 h-4" />
                   )}
-                  {saveStatus === 'saving' ? '儲存中...' : saveStatus === 'saved' ? '已儲存' : '儲存班表'}
+                  {saveStatus === 'saving' ? '儲存中...' : (!hasUnsavedChanges && saveStatus === 'saved') ? '已儲存' : '儲存班表'}
                 </button>
                 <button 
                   onClick={handleExportImage} 
