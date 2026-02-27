@@ -636,53 +636,6 @@ export default function App() {
                                   {cellObj.customTime && <span className="text-[10px] opacity-70 mt-1">{cellObj.customTime}</span>}
                                   {isPreferredOff && shiftId !== 'OFF' && <AlertCircle className="w-3 h-3 text-jp-holiday absolute top-1 right-1" />}
                                 </div>
-
-                                {isSelected && (
-                                  <div className="absolute z-40 mt-1 w-56 bg-white rounded-lg shadow-xl border border-jp-border p-2 left-1/2 -translate-x-1/2 fade-in">
-                                    <div className="text-[10px] text-jp-muted mb-2 px-2 flex justify-between items-center border-b border-jp-border pb-1">
-                                      選擇班別
-                                      <button onClick={(e) => { e.stopPropagation(); setSelectedCell(null); }} className="hover:text-jp-ink"><X className="w-3 h-3" /></button>
-                                    </div>
-                                    <div className="space-y-0.5 max-h-48 overflow-y-auto px-1">
-                                      {getAvailableDropdownShifts(emp.type).map(s => (
-                                        <button
-                                          key={s.id}
-                                          onClick={(e) => { e.stopPropagation(); updateCellShift(emp.id, dateStr, s.id); }}
-                                          className={`w-full text-left px-3 py-2 text-xs rounded transition-colors flex justify-between items-center ${shiftId === s.id ? 'bg-jp-bg text-jp-accent font-medium' : 'text-jp-ink hover:bg-jp-bg/50'}`}
-                                        >
-                                          {s.name} <span className="text-[10px] opacity-50">{s.time}</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                    
-                                    {shiftId !== 'OFF' && (
-                                      <div className="mt-2 pt-2 border-t border-jp-border px-2">
-                                        <div className="flex gap-2">
-                                          <div className="flex-1">
-                                            <label className="text-[9px] text-jp-muted block mb-0.5">時間</label>
-                                            <input 
-                                              type="text" 
-                                              value={cellObj.customTime} 
-                                              onChange={(e) => updateCellCustom(emp.id, dateStr, {customTime: e.target.value})} 
-                                              className="w-full rounded border-jp-border text-[10px] py-1 focus:ring-jp-accent focus:border-jp-accent" 
-                                              placeholder="09:00-17:00" 
-                                            />
-                                          </div>
-                                          <div className="w-12">
-                                            <label className="text-[9px] text-jp-muted block mb-0.5">時數</label>
-                                            <input 
-                                              type="number" 
-                                              step="0.5" 
-                                              value={cellObj.customHours} 
-                                              onChange={(e) => updateCellCustom(emp.id, dateStr, {customHours: parseFloat(e.target.value) || 0})} 
-                                              className="w-full rounded border-jp-border text-[10px] text-center py-1 focus:ring-jp-accent focus:border-jp-accent" 
-                                            />
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
                               </td>
                             );
                           })}
@@ -939,13 +892,87 @@ export default function App() {
       </main>
 
       {selectedCell && (
-        <div 
-          className="fixed inset-0 z-10 bg-transparent" 
-          onClick={() => {
-            saveScheduleToFirebase(schedule); // 關閉時統一存檔
-            setSelectedCell(null);
-          }} 
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-jp-ink/20 backdrop-blur-[2px] fade-in">
+          <div className="bg-jp-paper rounded-lg w-full max-w-sm shadow-2xl overflow-hidden border border-jp-border">
+            <div className="flex justify-between items-center p-4 border-b border-jp-border">
+              <div>
+                <h3 className="text-sm font-medium text-jp-ink">編輯班別</h3>
+                <p className="text-[10px] text-jp-muted mt-0.5">
+                  {employees.find(e => e.id === selectedCell.empId)?.name} · {selectedCell.date}
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  saveScheduleToFirebase(schedule);
+                  setSelectedCell(null);
+                }} 
+                className="text-jp-muted hover:text-jp-ink transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-[10px] font-medium text-jp-muted mb-2 uppercase tracking-wider">選擇班別</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {getAvailableDropdownShifts(employees.find(e => e.id === selectedCell.empId)?.type || '').map(s => {
+                    const currentShiftId = schedule[selectedCell.date]?.[selectedCell.empId]?.shiftId || 'OFF';
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => updateCellShift(selectedCell.empId, selectedCell.date, s.id)}
+                        className={`text-left px-3 py-2.5 rounded border transition-all flex flex-col ${currentShiftId === s.id ? 'bg-jp-accent/10 border-jp-accent text-jp-accent' : 'bg-white border-jp-border text-jp-ink hover:bg-jp-bg'}`}
+                      >
+                        <span className="text-xs font-medium">{s.name}</span>
+                        <span className="text-[9px] opacity-60">{s.time}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {schedule[selectedCell.date]?.[selectedCell.empId]?.shiftId !== 'OFF' && (
+                <div className="pt-4 border-t border-jp-border">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-medium text-jp-muted mb-1.5 uppercase tracking-wider">自定義時間</label>
+                      <input 
+                        type="text" 
+                        value={schedule[selectedCell.date]?.[selectedCell.empId]?.customTime || ''} 
+                        onChange={(e) => updateCellCustom(selectedCell.empId, selectedCell.date, {customTime: e.target.value})} 
+                        className="w-full rounded border-jp-border text-xs py-2 focus:ring-jp-accent focus:border-jp-accent" 
+                        placeholder="09:00-17:00" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-medium text-jp-muted mb-1.5 uppercase tracking-wider">工時 (小時)</label>
+                      <input 
+                        type="number" 
+                        step="0.5" 
+                        value={schedule[selectedCell.date]?.[selectedCell.empId]?.customHours || 0} 
+                        onChange={(e) => updateCellCustom(selectedCell.empId, selectedCell.date, {customHours: parseFloat(e.target.value) || 0})} 
+                        className="w-full rounded border-jp-border text-xs py-2 focus:ring-jp-accent focus:border-jp-accent" 
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-jp-bg/30 border-t border-jp-border flex justify-end">
+              <button 
+                onClick={() => {
+                  saveScheduleToFirebase(schedule);
+                  setSelectedCell(null);
+                }} 
+                className="jp-button-primary w-full"
+              >
+                確定並儲存
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {editingEmp && (
