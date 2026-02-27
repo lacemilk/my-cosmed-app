@@ -167,16 +167,18 @@ export default function App() {
   };
 
   // 3. 儲存班表
-  const saveScheduleToFirebase = async (newSched: any) => {
+  const saveScheduleToFirebase = async (newSched: any, silent = true) => {
     try {
       const promises = [];
       for (const dateStr in newSched) {
         promises.push(setDoc(doc(db, 'schedules', dateStr), newSched[dateStr]));
       }
       await Promise.all(promises);
+      if (!silent) alert("班表儲存成功！");
       console.log("Schedule saved successfully");
     } catch (error) {
       console.error("Schedule Save Error:", error);
+      if (!silent) alert("儲存失敗，請檢查網路連線");
     }
   };
 
@@ -204,21 +206,45 @@ export default function App() {
     const element = document.getElementById('schedule-table');
     if (!element) return;
     
+    // 為了平板匯出優化：先捲動到頂部
+    window.scrollTo(0, 0);
+    
     try {
+      // 顯示簡易 Loading
+      const loadingDiv = document.createElement('div');
+      loadingDiv.className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/40 text-white font-medium backdrop-blur-sm";
+      loadingDiv.innerHTML = "圖片產生中，請稍候...";
+      document.body.appendChild(loadingDiv);
+
       const canvas = await html2canvas(element, {
         backgroundColor: '#F7F7F5',
         scale: 2,
         logging: false,
-        useCORS: true
+        useCORS: true,
+        allowTaint: true,
+        width: element.scrollWidth,
+        height: element.scrollHeight,
+        onclone: (clonedDoc) => {
+          const el = clonedDoc.getElementById('schedule-table');
+          if (el) {
+            el.style.overflow = 'visible';
+            el.style.width = 'auto';
+          }
+        }
       });
+      
+      document.body.removeChild(loadingDiv);
+
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = `康是美班表_${format(currentDate, 'yyyy-MM-dd')}.png`;
       link.href = dataUrl;
       link.click();
+      
+      alert("匯出成功！");
     } catch (error) {
       console.error("Export Error:", error);
-      alert("匯出圖片失敗");
+      alert("匯出圖片失敗，請嘗試使用電腦版匯出。");
     }
   };
 
@@ -446,9 +472,6 @@ export default function App() {
             if (hasOverlap) return; // 與課表衝突，跳過
           }
 
-          // 新邏輯：正職 (FT) 只排值班班別 (shift.type === 'FT')
-          if (emp.type === 'FT' && shift.type !== 'FT') return;
-
           let score = 0;
           if (shift.isMorning) {
               if (shift.type === 'FT') {
@@ -456,9 +479,10 @@ export default function App() {
                   if (emp.type === 'FT') score += 2000;
                   else if (emp.type === 'PPT') score += 1000;
               } else {
-                  // 非值班（支援）優先給 PT，其次 PPT
+                  // 非值班（支援）優先給 PT，其次 PPT，最後才是 FT (讓大家都有班上)
                   if (emp.type === 'PT') score += 1000;
                   else if (emp.type === 'PPT') score += 500;
+                  else if (emp.type === 'FT') score += 200;
               }
           } else {
               if (shift.type === 'FT') {
@@ -466,9 +490,10 @@ export default function App() {
                   if (emp.type === 'FT') score += 2000;
                   else if (emp.type === 'PPT') score += 1000;
               } else {
-                  // 非值班（支援）優先給 PT，其次 PPT
+                  // 非值班（支援）優先給 PT，其次 PPT，最後才是 FT
                   if (emp.type === 'PT') score += 1000;
                   else if (emp.type === 'PPT') score += 500;
+                  else if (emp.type === 'FT') score += 200;
               }
           }
 
@@ -657,7 +682,7 @@ export default function App() {
                   </div>
                 </div>
                 <button 
-                  onClick={() => saveScheduleToFirebase(schedule)} 
+                  onClick={() => saveScheduleToFirebase(schedule, false)} 
                   className="jp-button-secondary flex items-center gap-2"
                 >
                   <History className="w-4 h-4" /> 儲存班表
@@ -1051,16 +1076,32 @@ export default function App() {
 
               {schedule[selectedCell.date]?.[selectedCell.empId]?.shiftId !== 'OFF' && (
                 <div className="pt-4 border-t border-jp-border">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-4">
                     <div>
                       <label className="block text-[10px] font-medium text-jp-muted mb-1.5 uppercase tracking-wider">自定義時間</label>
-                      <input 
-                        type="text" 
-                        value={schedule[selectedCell.date]?.[selectedCell.empId]?.customTime || ''} 
-                        onChange={(e) => updateCellCustom(selectedCell.empId, selectedCell.date, {customTime: e.target.value})} 
-                        className="w-full rounded border-jp-border text-xs py-2 focus:ring-jp-accent focus:border-jp-accent" 
-                        placeholder="09:00-17:00" 
-                      />
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="time" 
+                          value={schedule[selectedCell.date]?.[selectedCell.empId]?.customTime?.split('-')[0] || '09:00'} 
+                          onChange={(e) => {
+                            const current = schedule[selectedCell.date]?.[selectedCell.empId]?.customTime || '09:00-17:00';
+                            const [_, end] = current.split('-');
+                            updateCellCustom(selectedCell.empId, selectedCell.date, {customTime: `${e.target.value}-${end || '17:00'}`});
+                          }}
+                          className="flex-1 rounded border-jp-border text-xs py-2 focus:ring-jp-accent focus:border-jp-accent" 
+                        />
+                        <span className="text-jp-muted">-</span>
+                        <input 
+                          type="time" 
+                          value={schedule[selectedCell.date]?.[selectedCell.empId]?.customTime?.split('-')[1] || '17:00'} 
+                          onChange={(e) => {
+                            const current = schedule[selectedCell.date]?.[selectedCell.empId]?.customTime || '09:00-17:00';
+                            const [start, _] = current.split('-');
+                            updateCellCustom(selectedCell.empId, selectedCell.date, {customTime: `${start || '09:00'}-${e.target.value}`});
+                          }}
+                          className="flex-1 rounded border-jp-border text-xs py-2 focus:ring-jp-accent focus:border-jp-accent" 
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-[10px] font-medium text-jp-muted mb-1.5 uppercase tracking-wider">工時 (小時)</label>
