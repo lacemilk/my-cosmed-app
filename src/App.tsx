@@ -14,9 +14,10 @@ import {
 import { 
   format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, 
   isSameDay, isToday, startOfMonth, endOfMonth, addMonths, subMonths,
-  isWeekend, parseISO
+  isWeekend, parseISO, subDays
 } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
+import html2canvas from 'html2canvas';
 
 // --- 預設常數與資料 ---
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
@@ -59,17 +60,17 @@ const INITIAL_SHIFTS = [
 ];
 
 const INITIAL_EMPLOYEES = [
-  { id: '1', name: 'S M', type: 'FT', preferredOff: [], maxHours: 40, shiftPreference: 'NONE' }, 
-  { id: '2', name: 'R', type: 'FT', preferredOff: [5], maxHours: 40, shiftPreference: 'NONE' }, 
-  { id: '3', name: '嘉祐', type: 'FT', preferredOff: [], maxHours: 40, shiftPreference: 'NONE' }, 
-  { id: '4', name: '育榕', type: 'FT', preferredOff: [2, 6], maxHours: 40, shiftPreference: 'NONE' },
-  { id: '5', name: '冠慈', type: 'PPT', preferredOff: [1, 5, 6], maxHours: 30, shiftPreference: 'MORNING' },
-  { id: '6', name: '千育', type: 'PT', preferredOff: [3, 6], maxHours: 24, shiftPreference: 'EVENING' },
-  { id: '7', name: '家瑩', type: 'PT', preferredOff: [1, 2, 3, 4, 5], maxHours: 24, shiftPreference: 'EVENING' },
-  { id: '8', name: '梓瑜', type: 'PT', preferredOff: [], maxHours: 24, shiftPreference: 'MORNING' },
-  { id: '9', name: '秉澤', type: 'PT', preferredOff: [2, 3], maxHours: 24, shiftPreference: 'EVENING' },
-  { id: '10', name: '蒨昀', type: 'PT', preferredOff: [], maxHours: 24, shiftPreference: 'EVENING' },
-  { id: '11', name: '詩宥', type: 'PT', preferredOff: [0, 1], maxHours: 24, shiftPreference: 'EVENING' },
+  { id: '1', name: 'S M', type: 'FT', preferredOff: [], maxHours: 40, shiftPreference: 'NONE', classSchedule: [] }, 
+  { id: '2', name: 'R', type: 'FT', preferredOff: [5], maxHours: 40, shiftPreference: 'NONE', classSchedule: [] }, 
+  { id: '3', name: '嘉祐', type: 'FT', preferredOff: [], maxHours: 40, shiftPreference: 'NONE', classSchedule: [] }, 
+  { id: '4', name: '育榕', type: 'FT', preferredOff: [2, 6], maxHours: 40, shiftPreference: 'NONE', classSchedule: [] },
+  { id: '5', name: '冠慈', type: 'PPT', preferredOff: [1, 5, 6], maxHours: 30, shiftPreference: 'MORNING', classSchedule: [] },
+  { id: '6', name: '千育', type: 'PT', preferredOff: [3, 6], maxHours: 24, shiftPreference: 'EVENING', classSchedule: [] },
+  { id: '7', name: '家瑩', type: 'PT', preferredOff: [1, 2, 3, 4, 5], maxHours: 24, shiftPreference: 'EVENING', classSchedule: [] },
+  { id: '8', name: '梓瑜', type: 'PT', preferredOff: [], maxHours: 24, shiftPreference: 'MORNING', classSchedule: [] },
+  { id: '9', name: '秉澤', type: 'PT', preferredOff: [2, 3], maxHours: 24, shiftPreference: 'EVENING', classSchedule: [] },
+  { id: '10', name: '蒨昀', type: 'PT', preferredOff: [], maxHours: 24, shiftPreference: 'EVENING', classSchedule: [] },
+  { id: '11', name: '詩宥', type: 'PT', preferredOff: [0, 1], maxHours: 24, shiftPreference: 'EVENING', classSchedule: [] },
 ];
 
 const INITIAL_BUDGET = {
@@ -95,43 +96,43 @@ export default function App() {
   
   // 1. 初始化讀取資料
   useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true);
-      try {
-        // 讀取員工
-        const empSnap = await getDocs(collection(db, 'employees'));
-        const empList = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (empList.length > 0) setEmployees(empList as any);
+    setIsLoading(true);
+    
+    // 監聽員工
+    const unsubEmployees = onSnapshot(collection(db, 'employees'), (snapshot) => {
+      const empList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (empList.length > 0) setEmployees(empList as any);
+    });
 
-        // 讀取班別
-        const shiftSnap = await getDocs(collection(db, 'shifts'));
-        const shiftList = shiftSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (shiftList.length > 0) setShifts(shiftList as any);
+    // 監聽班別
+    const unsubShifts = onSnapshot(collection(db, 'shifts'), (snapshot) => {
+      const shiftList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (shiftList.length > 0) setShifts(shiftList as any);
+    });
 
-        // 讀取預算與設定
-        const settingsSnap = await getDoc(doc(db, 'settings', 'storeConfig'));
-        if (settingsSnap.exists()) {
-          setStoreBudget(settingsSnap.data() as any);
-        }
-
-        // 讀取排班紀錄 (監聽模式)
-        const unsubscribe = onSnapshot(collection(db, 'schedules'), (snapshot) => {
-          const newSchedule: Record<string, Record<string, any>> = {};
-          snapshot.forEach(doc => {
-            newSchedule[doc.id] = doc.data();
-          });
-          setSchedule(newSchedule);
-        });
-
-        setIsLoading(false);
-        return () => unsubscribe();
-      } catch (error) {
-        console.error("Firebase Load Error:", error);
-        setIsLoading(false);
+    // 監聽設定
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'storeConfig'), (doc) => {
+      if (doc.exists()) {
+        setStoreBudget(doc.data() as any);
       }
-    };
+    });
 
-    loadData();
+    // 監聽排班紀錄
+    const unsubSchedule = onSnapshot(collection(db, 'schedules'), (snapshot) => {
+      const newSchedule: Record<string, Record<string, any>> = {};
+      snapshot.forEach(doc => {
+        newSchedule[doc.id] = doc.data();
+      });
+      setSchedule(newSchedule);
+      setIsLoading(false);
+    });
+
+    return () => {
+      unsubEmployees();
+      unsubShifts();
+      unsubSettings();
+      unsubSchedule();
+    };
   }, []);
 
   // 2. 儲存員工資料
@@ -168,9 +169,12 @@ export default function App() {
   // 3. 儲存班表
   const saveScheduleToFirebase = async (newSched: any) => {
     try {
+      const promises = [];
       for (const dateStr in newSched) {
-        await setDoc(doc(db, 'schedules', dateStr), newSched[dateStr]);
+        promises.push(setDoc(doc(db, 'schedules', dateStr), newSched[dateStr]));
       }
+      await Promise.all(promises);
+      console.log("Schedule saved successfully");
     } catch (error) {
       console.error("Schedule Save Error:", error);
     }
@@ -195,17 +199,32 @@ export default function App() {
     saveShifts();
   }, [shifts]);
 
-  useEffect(() => {
-    // 初始化當週班表
-    const weekDays = eachDayOfInterval({
-      start: startOfWeek(currentDate, { weekStartsOn: 1 }),
-      end: endOfWeek(currentDate, { weekStartsOn: 1 })
-    });
+  // 5. 匯出圖片
+  const handleExportImage = async () => {
+    const element = document.getElementById('schedule-table');
+    if (!element) return;
     
-    const needsInit = weekDays.some(d => !schedule[format(d, 'yyyy-MM-dd')]);
-    if (needsInit) {
-      handleAutoSchedule(currentDate);
+    try {
+      const canvas = await html2canvas(element, {
+        backgroundColor: '#F7F7F5',
+        scale: 2,
+        logging: false,
+        useCORS: true
+      });
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `康是美班表_${format(currentDate, 'yyyy-MM-dd')}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error("Export Error:", error);
+      alert("匯出圖片失敗");
     }
+  };
+
+  useEffect(() => {
+    // 僅在切換日期時，如果該週完全沒有任何資料，才提醒使用者可以點擊智能排班
+    // 不再自動執行，避免覆蓋已有的手動調整
   }, [currentDate]);
 
   // --- 排班與法規邏輯 ---
@@ -267,6 +286,63 @@ export default function App() {
           if (!hasEveningDuty) issues.push(`${dayName} 缺乏晚班值班人員 (需安排正職或PPT)`);
         }
       }
+    });
+
+    // 3. 22:00-23:00 值班需求 (至少1值班+1任意)
+    weekDays.forEach((day) => {
+      const dateStr = format(day, 'yyyy-MM-dd');
+      let dutyCount = 0;
+      let totalCount = 0;
+
+      employees.forEach(emp => {
+        const cell = currentSchedule[dateStr]?.[emp.id];
+        if (cell && cell.shiftId !== 'OFF') {
+          const shiftData = shifts.find(s => s.id === cell.shiftId);
+          const timeStr = cell.customTime || shiftData?.time;
+          if (timeStr) {
+            const [start, end] = timeStr.split('-').map(t => parseInt(t.split(':')[0], 10));
+            // 檢查是否涵蓋 22:00-23:00
+            if (start <= 22 && end >= 23) {
+              totalCount++;
+              if (emp.type === 'FT' || emp.type === 'PPT') dutyCount++;
+            }
+          }
+        }
+      });
+
+      if (totalCount > 0) {
+        if (dutyCount < 1) issues.push(`${format(day, 'MM/dd')} 22:00-23:00 缺乏值班人員`);
+        if (totalCount < 2) issues.push(`${format(day, 'MM/dd')} 22:00-23:00 總人數不足2人`);
+      }
+    });
+
+    // 4. 11小時休息時間
+    employees.forEach(emp => {
+      weekDays.forEach(day => {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const prevDateStr = format(subDays(day, 1), 'yyyy-MM-dd');
+        const currentCell = currentSchedule[dateStr]?.[emp.id];
+        const prevCell = currentSchedule[prevDateStr]?.[emp.id];
+
+        if (currentCell && currentCell.shiftId !== 'OFF' && prevCell && prevCell.shiftId !== 'OFF') {
+          const currentShift = shifts.find(s => s.id === currentCell.shiftId);
+          const prevShift = shifts.find(s => s.id === prevCell.shiftId);
+          
+          const currentTime = currentCell.customTime || currentShift?.time;
+          const prevTime = prevCell.customTime || prevShift?.time;
+
+          if (currentTime && prevTime) {
+            const currentStart = parseInt(currentTime.split('-')[0].split(':')[0], 10);
+            const prevEnd = parseInt(prevTime.split('-')[1].split(':')[0], 10);
+            
+            // 假設跨日的情況，prevEnd 到 currentStart 的距離
+            const restHours = (24 - prevEnd) + currentStart;
+            if (restHours < 11) {
+              issues.push(`${emp.name} 在 ${format(day, 'MM/dd')} 休息時間不足 11 小時 (僅 ${restHours}h)`);
+            }
+          }
+        }
+      });
     });
 
     setComplianceIssues(issues);
@@ -342,28 +418,57 @@ export default function App() {
           
           if (shift.type === 'FT' && emp.type === 'PT') return;
 
+          // 11小時休息檢查
+          const prevDateStr = format(subDays(day, 1), 'yyyy-MM-dd');
+          const prevCell = newSchedule[prevDateStr]?.[emp.id];
+          if (prevCell && prevCell.shiftId !== 'OFF') {
+            const prevShift = shifts.find(s => s.id === prevCell.shiftId);
+            const prevTime = prevCell.customTime || prevShift?.time;
+            if (prevTime) {
+              const prevEnd = parseInt(prevTime.split('-')[1].split(':')[0], 10);
+              const currentStart = parseInt(shift.original.time.split('-')[0].split(':')[0], 10);
+              const restHours = (24 - prevEnd) + currentStart;
+              if (restHours < 11) return; // 不符合休息時間，跳過
+            }
+          }
+
+          // 課表檢查 (PT/PPT)
+          if (emp.classSchedule && emp.classSchedule.length > 0) {
+            const todayClasses = emp.classSchedule.filter((c: any) => c.day === dayIndex);
+            const shiftStart = parseInt(shift.original.time.split('-')[0].split(':')[0], 10);
+            const shiftEnd = parseInt(shift.original.time.split('-')[1].split(':')[0], 10);
+            
+            const hasOverlap = todayClasses.some((c: any) => {
+              const cStart = parseInt(c.startTime.split(':')[0], 10);
+              const cEnd = parseInt(c.endTime.split(':')[0], 10);
+              return (shiftStart < cEnd && shiftEnd > cStart);
+            });
+            if (hasOverlap) return; // 與課表衝突，跳過
+          }
+
+          // 新邏輯：正職 (FT) 只排值班班別 (shift.type === 'FT')
+          if (emp.type === 'FT' && shift.type !== 'FT') return;
+
           let score = 0;
           if (shift.isMorning) {
               if (shift.type === 'FT') {
-                  // 值班優先給 PPT 或 FT
-                  if (emp.type === 'PPT') score += 1000;
-                  else if (emp.type === 'FT') score += 500;
+                  // 值班優先給正職 (FT)，其次才是 PPT
+                  if (emp.type === 'FT') score += 2000;
+                  else if (emp.type === 'PPT') score += 1000;
               } else {
-                  // 非值班（支援）可以混搭，優先給 PT 以節省正職工時，但 PPT/FT 也可以排
-                  if (emp.type === 'PT') score += 800;
-                  else if (emp.type === 'PPT') score += 400;
-                  else if (emp.type === 'FT') score += 200;
+                  // 非值班（支援）優先給 PT，其次 PPT
+                  if (emp.type === 'PT') score += 1000;
+                  else if (emp.type === 'PPT') score += 500;
               }
           } else {
               if (shift.type === 'FT') {
-                  // 值班優先給 FT 或 PPT
-                  if (emp.type === 'FT') score += 1000;
-                  else if (emp.type === 'PPT') score += 500;
+                  // 值班優先給正職 (FT)，其次才是 PPT
+                  if (emp.type === 'FT') score += 2000;
+                  else if (emp.type === 'PPT') score += 1000;
               } else {
-                  // 非值班（支援）可以混搭
-                  if (emp.type === 'PT') score += 800;
-                  else if (emp.type === 'PPT') score += 400;
-                  else if (emp.type === 'FT') score += 200;
+                  // 非值班（支援）優先給 PT，其次 PPT
+                  if (emp.type === 'PT') score += 1000;
+                  else if (emp.type === 'PPT') score += 500;
               }
           }
 
@@ -552,6 +657,18 @@ export default function App() {
                   </div>
                 </div>
                 <button 
+                  onClick={() => saveScheduleToFirebase(schedule)} 
+                  className="jp-button-secondary flex items-center gap-2"
+                >
+                  <History className="w-4 h-4" /> 儲存班表
+                </button>
+                <button 
+                  onClick={handleExportImage} 
+                  className="jp-button-secondary flex items-center gap-2"
+                >
+                  <Clock className="w-4 h-4" /> 匯出圖片
+                </button>
+                <button 
                   onClick={() => handleAutoSchedule(currentDate)} 
                   className="jp-button-primary flex items-center gap-2"
                 >
@@ -571,7 +688,7 @@ export default function App() {
               </div>
             )}
 
-            <div className="jp-card overflow-hidden">
+            <div className="jp-card overflow-hidden" id="schedule-table">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-jp-border">
                   <thead className="bg-jp-bg/50">
@@ -1036,6 +1153,71 @@ export default function App() {
                   })}
                 </div>
               </div>
+
+              {/* 課表設定 (PT/PPT) */}
+              {(editingEmp.type === 'PT' || editingEmp.type === 'PPT') && (
+                <div className="pt-4 border-t border-jp-border">
+                  <div className="flex justify-between items-center mb-3">
+                    <label className="block text-[11px] font-medium text-jp-muted uppercase tracking-wider">上課/不便排班時段</label>
+                    <button 
+                      onClick={() => setEditingEmp({...editingEmp, classSchedule: [...(editingEmp.classSchedule || []), { day: 0, startTime: '09:00', endTime: '12:00' }]})}
+                      className="text-[10px] text-jp-accent hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> 新增時段
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-32 overflow-y-auto pr-1">
+                    {(editingEmp.classSchedule || []).map((item: any, idx: number) => (
+                      <div key={idx} className="flex items-center gap-2 bg-jp-bg/30 p-2 rounded border border-jp-border">
+                        <select 
+                          value={item.day} 
+                          onChange={(e) => {
+                            const newSched = [...editingEmp.classSchedule];
+                            newSched[idx].day = parseInt(e.target.value);
+                            setEditingEmp({...editingEmp, classSchedule: newSched});
+                          }}
+                          className="text-[10px] rounded border-jp-border py-1 bg-white"
+                        >
+                          {WEEKDAYS.map((d, i) => <option key={i} value={i}>週{d}</option>)}
+                        </select>
+                        <input 
+                          type="time" 
+                          value={item.startTime} 
+                          onChange={(e) => {
+                            const newSched = [...editingEmp.classSchedule];
+                            newSched[idx].startTime = e.target.value;
+                            setEditingEmp({...editingEmp, classSchedule: newSched});
+                          }}
+                          className="text-[10px] rounded border-jp-border py-1 flex-1"
+                        />
+                        <span className="text-jp-muted">-</span>
+                        <input 
+                          type="time" 
+                          value={item.endTime} 
+                          onChange={(e) => {
+                            const newSched = [...editingEmp.classSchedule];
+                            newSched[idx].endTime = e.target.value;
+                            setEditingEmp({...editingEmp, classSchedule: newSched});
+                          }}
+                          className="text-[10px] rounded border-jp-border py-1 flex-1"
+                        />
+                        <button 
+                          onClick={() => {
+                            const newSched = editingEmp.classSchedule.filter((_: any, i: number) => i !== idx);
+                            setEditingEmp({...editingEmp, classSchedule: newSched});
+                          }}
+                          className="text-jp-holiday p-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {(!editingEmp.classSchedule || editingEmp.classSchedule.length === 0) && (
+                      <p className="text-[10px] text-jp-muted italic text-center py-2">尚無設定時段</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="p-6 border-t border-jp-border bg-jp-bg/30 flex justify-between items-center">
