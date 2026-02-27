@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
-import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, writeBatch } from 'firebase/firestore';
 import { 
   Calendar as CalendarIcon, Users, Settings, Clock, CheckCircle2, AlertCircle, 
   RefreshCw, Edit3, Plus, Trash2, X, DollarSign, ChevronLeft, ChevronRight,
@@ -91,6 +91,7 @@ export default function App() {
   const [selectedCell, setSelectedCell] = useState<{ empId: string, date: string } | null>(null);
   const [editingEmp, setEditingEmp] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   // === Firebase 資料同步 ===
   
@@ -168,17 +169,33 @@ export default function App() {
 
   // 3. 儲存班表
   const saveScheduleToFirebase = async (newSched: any, silent = true) => {
+    if (!silent) setSaveStatus('saving');
+    
     try {
-      const promises = [];
-      for (const dateStr in newSched) {
-        promises.push(setDoc(doc(db, 'schedules', dateStr), newSched[dateStr]));
+      const batch = writeBatch(db);
+      // 為了效能，我們僅儲存當前視圖週期的日期，或是傳入的特定變動
+      // 這裡我們抓取 newSched 中所有的 key (日期)
+      const dates = Object.keys(newSched);
+      
+      // Firestore batch 限制 500 筆，通常一週只有 7 筆，一個月 31 筆，遠低於限制
+      dates.forEach(dateStr => {
+        const docRef = doc(db, 'schedules', dateStr);
+        batch.set(docRef, newSched[dateStr]);
+      });
+      
+      await batch.commit();
+      
+      if (!silent) {
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
       }
-      await Promise.all(promises);
-      if (!silent) alert("班表儲存成功！");
-      console.log("Schedule saved successfully");
+      console.log("Schedule saved successfully with batch");
     } catch (error) {
       console.error("Schedule Save Error:", error);
-      if (!silent) alert("儲存失敗，請檢查網路連線");
+      if (!silent) {
+        setSaveStatus('idle');
+        alert("儲存失敗，請檢查網路連線");
+      }
     }
   };
 
@@ -206,45 +223,39 @@ export default function App() {
     const element = document.getElementById('schedule-table');
     if (!element) return;
     
-    // 為了平板匯出優化：先捲動到頂部
-    window.scrollTo(0, 0);
-    
-    try {
-      // 顯示簡易 Loading
-      const loadingDiv = document.createElement('div');
-      loadingDiv.className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/40 text-white font-medium backdrop-blur-sm";
-      loadingDiv.innerHTML = "圖片產生中，請稍候...";
-      document.body.appendChild(loadingDiv);
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/40 text-white font-medium backdrop-blur-sm";
+    loadingDiv.innerHTML = "圖片產生中...";
+    document.body.appendChild(loadingDiv);
 
+    try {
       const canvas = await html2canvas(element, {
         backgroundColor: '#F7F7F5',
-        scale: 2,
+        scale: 1.2, // 降低倍率以加速並減小檔案體積
         logging: false,
         useCORS: true,
-        allowTaint: true,
-        width: element.scrollWidth,
-        height: element.scrollHeight,
         onclone: (clonedDoc) => {
           const el = clonedDoc.getElementById('schedule-table');
           if (el) {
             el.style.overflow = 'visible';
             el.style.width = 'auto';
+            el.style.padding = '4px';
           }
         }
       });
       
-      document.body.removeChild(loadingDiv);
-
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = `康是美班表_${format(currentDate, 'yyyy-MM-dd')}.png`;
       link.href = dataUrl;
       link.click();
-      
-      alert("匯出成功！");
     } catch (error) {
       console.error("Export Error:", error);
       alert("匯出圖片失敗，請嘗試使用電腦版匯出。");
+    } finally {
+      if (document.body.contains(loadingDiv)) {
+        document.body.removeChild(loadingDiv);
+      }
     }
   };
 
@@ -683,9 +694,23 @@ export default function App() {
                 </div>
                 <button 
                   onClick={() => saveScheduleToFirebase(schedule, false)} 
-                  className="jp-button-secondary flex items-center gap-2"
+                  disabled={saveStatus !== 'idle'}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md border transition-all duration-200 ${
+                    saveStatus === 'saved' 
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-600' 
+                      : saveStatus === 'saving'
+                      ? 'bg-jp-bg border-jp-border text-jp-muted cursor-wait'
+                      : 'bg-white border-jp-border text-jp-ink hover:bg-jp-bg'
+                  }`}
                 >
-                  <History className="w-4 h-4" /> 儲存班表
+                  {saveStatus === 'saving' ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : saveStatus === 'saved' ? (
+                    <CheckCircle2 className="w-4 h-4" />
+                  ) : (
+                    <History className="w-4 h-4" />
+                  )}
+                  {saveStatus === 'saving' ? '儲存中...' : saveStatus === 'saved' ? '已儲存' : '儲存班表'}
                 </button>
                 <button 
                   onClick={handleExportImage} 
