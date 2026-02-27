@@ -17,7 +17,7 @@ import {
   isWeekend, parseISO, subDays
 } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import html2canvas from 'html2canvas';
+import domtoimage from 'dom-to-image-more';
 
 // --- 預設常數與資料 ---
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
@@ -98,9 +98,12 @@ export default function App() {
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
+        // 標準做法：設定 returnValue 並回傳字串
+        // 現代瀏覽器通常會顯示內建的警告訊息，忽略自定義字串
+        const message = '您有尚未儲存的變更，確定要離開嗎？';
         e.preventDefault();
-        e.returnValue = '您有尚未儲存的變更，確定要離開嗎？';
-        return e.returnValue;
+        e.returnValue = message;
+        return message;
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -243,66 +246,31 @@ export default function App() {
     document.body.appendChild(loadingDiv);
 
     try {
-      const canvas = await html2canvas(element, {
-        backgroundColor: '#F7F7F5',
-        scale: 1.2,
-        logging: false,
-        useCORS: true,
-        onclone: (clonedDoc) => {
-          const el = clonedDoc.getElementById('schedule-table');
-          if (el) {
-            el.style.overflow = 'visible';
-            el.style.width = 'auto';
-            el.style.padding = '16px';
-            
-            // 注入 CSS 降級
-            const styleTag = clonedDoc.createElement('style');
-            styleTag.innerHTML = `
-              * { -webkit-print-color-adjust: exact; }
-              :root {
-                --color-jp-bg: #F7F6F2 !important;
-                --color-jp-paper: #FFFFFF !important;
-                --color-jp-ink: #3C3C3C !important;
-                --color-jp-muted: #8E8E8E !important;
-                --color-jp-accent: #A78B71 !important;
-                --color-jp-holiday: #E67E7E !important;
-                --color-jp-border: #E5E1DA !important;
-              }
-            `;
-            clonedDoc.head.appendChild(styleTag);
-
-            // 遞迴處理所有子元素，將所有顏色屬性強制轉換為 rgb/rgba
-            // 這是因為 html2canvas 在解析 oklab/oklch 時會崩潰
-            const allElements = el.getElementsByTagName('*');
-            for (let i = 0; i < allElements.length; i++) {
-              const item = allElements[i] as HTMLElement;
-              const computed = window.getComputedStyle(item);
-              
-              // 處理背景色
-              if (computed.backgroundColor.includes('okl')) {
-                item.style.backgroundColor = computed.backgroundColor.replace(/okl(ab|ch)\(.*\)/g, '#FFFFFF');
-              }
-              // 處理文字顏色
-              if (computed.color.includes('okl')) {
-                item.style.color = computed.color.replace(/okl(ab|ch)\(.*\)/g, '#3C3C3C');
-              }
-              // 處理邊框顏色
-              if (computed.borderColor.includes('okl')) {
-                item.style.borderColor = computed.borderColor.replace(/okl(ab|ch)\(.*\)/g, '#E5E1DA');
-              }
-            }
-          }
-        }
+      // 使用 dom-to-image-more 替代 html2canvas，對現代 CSS (oklch) 與行動端支援更好
+      const dataUrl = await domtoimage.toPng(element, {
+        bgcolor: '#F7F7F5',
+        quality: 0.95,
+        style: {
+          'transform': 'scale(1)',
+          'transform-origin': 'top left',
+          'margin': '0',
+          'padding': '10px'
+        },
+        // 確保寬度足夠
+        width: element.scrollWidth + 20,
+        height: element.scrollHeight + 20,
       });
       
-      const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = `康是美班表_${format(currentDate, 'yyyy-MM-dd')}.png`;
       link.href = dataUrl;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
+      
     } catch (error) {
       console.error("Export Error:", error);
-      alert("匯出圖片失敗，請嘗試使用電腦版匯出。");
+      alert("匯出圖片失敗。若在平板/手機上無法下載，請嘗試長按圖片儲存或使用電腦版。");
     } finally {
       if (document.body.contains(loadingDiv)) {
         document.body.removeChild(loadingDiv);
