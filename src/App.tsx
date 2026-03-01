@@ -234,120 +234,6 @@ export default function App() {
     saveShifts();
   }, [shifts]);
 
-  // 5. 匯出圖片 (原生 JavaScript + Canvas + Web Share API)
-  const handleExportImage = async () => {
-    const element = document.getElementById('schedule-table');
-    if (!element) return;
-    
-    const loadingDiv = document.createElement('div');
-    loadingDiv.className = "fixed inset-0 z-[100] flex items-center justify-center bg-black/40 text-white font-medium backdrop-blur-sm";
-    loadingDiv.innerHTML = "圖片產生中...";
-    document.body.appendChild(loadingDiv);
-
-    try {
-      // 1. 取得元素尺寸
-      const width = element.scrollWidth;
-      const height = element.scrollHeight;
-
-      // 2. 建立 Canvas
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error("無法建立 Canvas Context");
-
-      // 設定 Canvas 尺寸 (考慮高解析度)
-      const scale = 2;
-      canvas.width = width * scale;
-      canvas.height = height * scale;
-      ctx.scale(scale, scale);
-
-      // 3. 使用 SVG foreignObject 技巧 (原生方式將 HTML 轉為 Canvas)
-      // 為了確保樣式正確，我們需要克隆元素並內聯樣式，或者簡單地將其包裝在 SVG 中
-      // 注意：這需要處理外部 CSS，原生實作較為複雜，這裡採用最簡潔的 SVG 封裝法
-      
-      const data = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-          <foreignObject width="100%" height="100%">
-            <div xmlns="http://www.w3.org/1999/xhtml">
-              ${new XMLSerializer().serializeToString(element)}
-              <style>
-                /* 這裡需要手動注入關鍵樣式，因為 SVG 內的 foreignObject 無法直接讀取外部 CSS */
-                ${Array.from(document.styleSheets)
-                  .map(sheet => {
-                    try {
-                      return Array.from(sheet.cssRules).map(rule => rule.cssText).join('');
-                    } catch (e) { return ''; }
-                  }).join('')}
-              </style>
-            </div>
-          </foreignObject>
-        </svg>
-      `;
-
-      const img = new Image();
-      const svg = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svg);
-
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = url;
-      });
-
-      // 繪製背景
-      ctx.fillStyle = '#F7F7F5';
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
-
-      // 4. 轉換為 Blob
-      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png', 1.0));
-      if (!blob) throw new Error("圖片產生失敗");
-
-      const fileName = `康是美班表_${format(currentDate, 'yyyy-MM-dd')}.png`;
-      const file = new File([blob], fileName, { type: 'image/png' });
-
-      // 5. 關鍵修改：使用 Web Share API
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: '康是美班表',
-            text: `${format(currentDate, 'yyyy-MM-dd')} 班表分享`,
-          });
-          console.log("分享成功");
-        } catch (shareError: any) {
-          if (shareError.name !== 'AbortError') {
-            console.error("分享失敗:", shareError);
-            // 失敗時回退到下載
-            downloadFile(blob, fileName);
-          }
-        }
-      } else {
-        // 不支援分享功能時，執行下載
-        downloadFile(blob, fileName);
-      }
-      
-    } catch (error) {
-      console.error("Export Error:", error);
-      alert("匯出圖片失敗。請嘗試使用電腦版或手動截圖。");
-    } finally {
-      if (document.body.contains(loadingDiv)) {
-        document.body.removeChild(loadingDiv);
-      }
-    }
-  };
-
-  const downloadFile = (blob: Blob, fileName: string) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.download = fileName;
-    link.href = url;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   useEffect(() => {
     // 僅在切換日期時，如果該週完全沒有任何資料，才提醒使用者可以點擊智能排班
     // 不再自動執行，避免覆蓋已有的手動調整
@@ -803,12 +689,6 @@ export default function App() {
                     <History className="w-4 h-4" />
                   )}
                   {saveStatus === 'saving' ? '儲存中...' : (!hasUnsavedChanges && saveStatus === 'saved') ? '已儲存' : '儲存班表'}
-                </button>
-                <button 
-                  onClick={handleExportImage} 
-                  className="jp-button-secondary flex items-center gap-2"
-                >
-                  <Clock className="w-4 h-4" /> 匯出圖片
                 </button>
                 <button 
                   onClick={() => handleAutoSchedule(currentDate)} 
