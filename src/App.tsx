@@ -18,54 +18,6 @@ import {
 } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 
-const AppLogo = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-    {/* Outer circle with arrow at top right */}
-    <path 
-      d="M 12 4 A 8 8 0 1 1 18.5 7.5" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-    />
-    <path 
-      d="M 16 7.5 H 18.5 V 5" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-    />
-    
-    {/* Inner circle with arrow at bottom right */}
-    <path 
-      d="M 10 10 A 3 3 0 1 0 14 14" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-    />
-    <path 
-      d="M 14 12 V 14 H 12" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-    />
-    
-    {/* Clock hand */}
-    <path 
-      d="M 12 12 L 15 15" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-    />
-    
-    {/* Dots at 12, 3, 6, 9 */}
-    <circle cx="12" cy="8" r="0.8" fill="currentColor" />
-    <circle cx="16" cy="12" r="0.8" fill="currentColor" />
-    <circle cx="12" cy="16" r="0.8" fill="currentColor" />
-    <circle cx="8" cy="12" r="0.8" fill="currentColor" />
-  </svg>
-);
-
 // --- 預設常數與資料 ---
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -648,9 +600,6 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-jp-accent rounded-xl flex items-center justify-center text-white shadow-sm">
-                <AppLogo className="h-7 w-7" />
-              </div>
               <span className="text-lg font-medium tracking-tight text-jp-ink">康是美智能排班</span>
             </div>
             <div className="flex space-x-1 sm:space-x-4">
