@@ -55,6 +55,7 @@ const INITIAL_SHIFTS = [
   { id: 'S2', name: '晚班(值班)', time: '15:00-23:00', hours: 8, type: 'FT', required: [1, 1, 1, 1, 1, 1, 1], color: COLORS[1] },
   { id: 'S3', name: '早班', time: '09:00-16:00', hours: 7, type: 'PT', required: [1, 1, 1, 1, 1, 1, 1], color: COLORS[2] },
   { id: 'S4', name: '晚班', time: '17:00-22:00', hours: 5, type: 'PT', required: [2, 2, 2, 2, 3, 3, 3], color: COLORS[3] },
+  { id: 'S5', name: '中班', time: '13:00-21:00', hours: 8, type: 'OTHER', required: [0, 0, 0, 0, 0, 0, 0], color: COLORS[4] },
   { id: 'M1', name: '開會', time: '10:00-12:00', hours: 0, type: 'OTHER', required: [0, 0, 0, 0, 0, 0, 0], color: 'bg-stone-200 text-stone-700 border-stone-300' },
 ];
 
@@ -600,7 +601,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-3">
-              <span className="text-lg font-medium tracking-tight text-jp-ink">康是美智能排班</span>
+              <span className="text-lg font-medium tracking-tight text-jp-ink">康是美大里門市</span>
             </div>
             <div className="flex space-x-1 sm:space-x-4">
               <button onClick={() => setActiveTab('schedule')} className={`inline-flex items-center px-4 py-2 text-sm font-medium transition-all ${activeTab === 'schedule' ? 'text-jp-accent border-b-2 border-jp-accent' : 'text-jp-muted hover:text-jp-ink'}`}>
@@ -1189,70 +1190,68 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 課表設定 (PT/PPT) */}
-              {(editingEmp.type === 'PT' || editingEmp.type === 'PPT') && (
-                <div className="pt-4 border-t border-jp-border">
-                  <div className="flex justify-between items-center mb-3">
-                    <label className="block text-[11px] font-medium text-jp-muted uppercase tracking-wider">上課/不便排班時段</label>
-                    <button 
-                      onClick={() => setEditingEmp({...editingEmp, classSchedule: [...(editingEmp.classSchedule || []), { day: 0, startTime: '09:00', endTime: '12:00' }]})}
-                      className="text-[10px] text-jp-accent hover:underline flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" /> 新增時段
-                    </button>
-                  </div>
-                  <div className="space-y-2 max-h-32 overflow-y-auto pr-1">
-                    {(editingEmp.classSchedule || []).map((item: any, idx: number) => (
-                      <div key={idx} className="flex items-center gap-2 bg-jp-bg/30 p-2 rounded border border-jp-border">
-                        <select 
-                          value={item.day} 
-                          onChange={(e) => {
-                            const newSched = [...editingEmp.classSchedule];
-                            newSched[idx].day = parseInt(e.target.value);
-                            setEditingEmp({...editingEmp, classSchedule: newSched});
-                          }}
-                          className="text-[10px] rounded border-jp-border py-1 bg-white"
-                        >
-                          {WEEKDAYS.map((d, i) => <option key={i} value={i}>週{d}</option>)}
-                        </select>
-                        <input 
-                          type="time" 
-                          value={item.startTime} 
-                          onChange={(e) => {
-                            const newSched = [...editingEmp.classSchedule];
-                            newSched[idx].startTime = e.target.value;
-                            setEditingEmp({...editingEmp, classSchedule: newSched});
-                          }}
-                          className="text-[10px] rounded border-jp-border py-1 flex-1"
-                        />
-                        <span className="text-jp-muted">-</span>
-                        <input 
-                          type="time" 
-                          value={item.endTime} 
-                          onChange={(e) => {
-                            const newSched = [...editingEmp.classSchedule];
-                            newSched[idx].endTime = e.target.value;
-                            setEditingEmp({...editingEmp, classSchedule: newSched});
-                          }}
-                          className="text-[10px] rounded border-jp-border py-1 flex-1"
-                        />
-                        <button 
-                          onClick={() => {
-                            const newSched = editingEmp.classSchedule.filter((_: any, i: number) => i !== idx);
-                            setEditingEmp({...editingEmp, classSchedule: newSched});
-                          }}
-                          className="text-jp-holiday p-1"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                    {(!editingEmp.classSchedule || editingEmp.classSchedule.length === 0) && (
-                      <p className="text-[10px] text-jp-muted italic text-center py-2">尚無設定時段</p>
-                    )}
-                  </div>
+              {/* 課表設定 (所有員工) */}
+              <div className="pt-4 border-t border-jp-border">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="block text-[11px] font-medium text-jp-muted uppercase tracking-wider">上課/不便排班時段</label>
+                  <button 
+                    onClick={() => setEditingEmp({...editingEmp, classSchedule: [...(editingEmp.classSchedule || []), { day: 0, startTime: '09:00', endTime: '12:00' }]})}
+                    className="text-[10px] text-jp-accent hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> 新增時段
+                  </button>
                 </div>
-              )}
+                <div className="space-y-2 max-h-32 overflow-y-auto pr-1">
+                  {(editingEmp.classSchedule || []).map((item: any, idx: number) => (
+                    <div key={idx} className="flex items-center gap-2 bg-jp-bg/30 p-2 rounded border border-jp-border">
+                      <select 
+                        value={item.day} 
+                        onChange={(e) => {
+                          const newSched = [...editingEmp.classSchedule];
+                          newSched[idx].day = parseInt(e.target.value);
+                          setEditingEmp({...editingEmp, classSchedule: newSched});
+                        }}
+                        className="text-[10px] rounded border-jp-border py-1 bg-white"
+                      >
+                        {WEEKDAYS.map((d, i) => <option key={i} value={i}>週{d}</option>)}
+                      </select>
+                      <input 
+                        type="time" 
+                        value={item.startTime} 
+                        onChange={(e) => {
+                          const newSched = [...editingEmp.classSchedule];
+                          newSched[idx].startTime = e.target.value;
+                          setEditingEmp({...editingEmp, classSchedule: newSched});
+                        }}
+                        className="text-[10px] rounded border-jp-border py-1 flex-1"
+                      />
+                      <span className="text-jp-muted">-</span>
+                      <input 
+                        type="time" 
+                        value={item.endTime} 
+                        onChange={(e) => {
+                          const newSched = [...editingEmp.classSchedule];
+                          newSched[idx].endTime = e.target.value;
+                          setEditingEmp({...editingEmp, classSchedule: newSched});
+                        }}
+                        className="text-[10px] rounded border-jp-border py-1 flex-1"
+                      />
+                      <button 
+                        onClick={() => {
+                          const newSched = editingEmp.classSchedule.filter((_: any, i: number) => i !== idx);
+                          setEditingEmp({...editingEmp, classSchedule: newSched});
+                        }}
+                        className="text-jp-holiday p-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {(!editingEmp.classSchedule || editingEmp.classSchedule.length === 0) && (
+                    <p className="text-[10px] text-jp-muted italic text-center py-2">尚無設定時段</p>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="p-6 border-t border-jp-border bg-jp-bg/30 flex justify-between items-center">
