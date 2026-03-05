@@ -185,14 +185,16 @@ export default function App() {
   };
 
   // 3. 儲存班表
-  const saveScheduleToFirebase = async (newSched: any, silent = true) => {
-    const issues = checkCompliance(newSched, currentDate);
-    if (issues.length > 0) {
-      if (!silent) {
-        setComplianceIssues(issues);
-        alert("❌ 儲存失敗：班表出現異常\n請查看下方的異常清單並修正。");
+  const saveScheduleToFirebase = async (newSched: any, silent = true, force = false) => {
+    if (!force) {
+      const issues = checkCompliance(newSched, currentDate);
+      if (issues.length > 0) {
+        if (!silent) {
+          setComplianceIssues(issues);
+          alert("❌ 儲存失敗：班表出現異常\n請查看下方的異常清單並修正。");
+        }
+        return;
       }
-      return;
     }
 
     if (!silent) {
@@ -292,30 +294,51 @@ export default function App() {
       }
     });
 
-    // 2. 勞基法規防呆：連續上班達 7 天
+    // 2. 勞基法規防呆：連續上班達 7 天 (含跨週檢查)
     employees.forEach(emp => {
-      const sortedDates = Object.keys(currentSchedule).sort();
-      let consecutiveDays = 0;
-      let startDay = '';
-
-      sortedDates.forEach((dateStr) => {
+      // 針對當週的每一天，往前檢查是否有連續 7 天上班
+      weekDays.forEach(day => {
+        const dateStr = format(day, 'yyyy-MM-dd');
         const cell = currentSchedule[dateStr]?.[emp.id];
+        
         if (cell && cell.shiftId !== 'OFF') {
-          if (consecutiveDays === 0) startDay = dateStr;
-          consecutiveDays++;
-          if (consecutiveDays >= 7) {
+          let consecutiveCount = 1;
+          let checkDay = subDays(day, 1);
+          
+          // 往前檢查最多 6 天
+          for (let i = 0; i < 6; i++) {
+            const checkDateStr = format(checkDay, 'yyyy-MM-dd');
+            const checkCell = currentSchedule[checkDateStr]?.[emp.id];
+            if (checkCell && checkCell.shiftId !== 'OFF') {
+              consecutiveCount++;
+              checkDay = subDays(checkDay, 1);
+            } else {
+              break;
+            }
+          }
+
+          if (consecutiveCount >= 7) {
+            // 避免重複報錯，只在第 7 天報錯
+            const prevDay = subDays(day, 1);
+            const prevDateStr = format(prevDay, 'yyyy-MM-dd');
+            const prevCell = currentSchedule[prevDateStr]?.[emp.id];
+            
+            // 如果前一天已經是第 7 天或以上，則不重複報 (除非是當週的第一天)
+            // 這裡簡單處理：只要在當週範圍內發現連續 7 天就報，但加上日期區間說明
+            const startDate = subDays(day, consecutiveCount - 1);
             issues.push({ 
               reason: '連續七天上班', 
-              details: [`人員：${emp.name}`, `說明：手動微調後，${emp.name} 從 ${format(parseISO(startDay), 'MM/dd')} 至 ${format(parseISO(dateStr), 'MM/dd')} 被連續排班 ${consecutiveDays} 天，請調整休假日。`] 
+              details: [
+                `人員：${emp.name}`, 
+                `說明：${emp.name} 從 ${format(startDate, 'MM/dd')} 至 ${format(day, 'MM/dd')} 已連續排班 ${consecutiveCount} 天，違反每 7 日應有 1 日休息之規定。`
+              ] 
             });
           }
-        } else {
-          consecutiveDays = 0;
         }
       });
     });
 
-    // 3. 個人條件防呆：偏好休假/上課衝突
+    // 3. 個人條件防呆：偏好休假/上課衝突 (僅限當週)
     employees.forEach(emp => {
       weekDays.forEach(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
@@ -357,17 +380,13 @@ export default function App() {
       });
     });
 
-    // 4. 11小時休息時間
+    // 4. 11小時休息時間 (含跨週檢查，如週日晚接週一早)
     employees.forEach(emp => {
-      const sortedDates = Object.keys(currentSchedule).sort();
-      for (let i = 1; i < sortedDates.length; i++) {
-        const dateStr = sortedDates[i];
-        const prevDateStr = sortedDates[i-1];
+      weekDays.forEach(day => {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const prevDay = subDays(day, 1);
+        const prevDateStr = format(prevDay, 'yyyy-MM-dd');
         
-        const d1 = parseISO(prevDateStr);
-        const d2 = parseISO(dateStr);
-        if (addDays(d1, 1).getTime() !== d2.getTime()) continue;
-
         const currentCell = currentSchedule[dateStr]?.[emp.id];
         const prevCell = currentSchedule[prevDateStr]?.[emp.id];
 
@@ -384,12 +403,16 @@ export default function App() {
             if (restHours < 11) {
               issues.push({ 
                 reason: '休息時間不足', 
-                details: [`人員：${emp.name}`, `日期：${format(d2, 'MM/dd')}`, `說明：與前一日下班時間休息僅 ${restHours} 小時 (法規要求 11 小時)。`] 
+                details: [
+                  `人員：${emp.name}`, 
+                  `日期：${format(day, 'MM/dd')}`, 
+                  `說明：前一日 (${format(prevDay, 'MM/dd')}) 下班時間與今日上班時間僅間隔 ${restHours} 小時，違反 11 小時休息規定。`
+                ] 
               });
             }
           }
         }
-      }
+      });
     });
 
     // 5. 22:00-23:00 至少一值班+一支援
@@ -767,9 +790,17 @@ export default function App() {
 
             {complianceIssues.length > 0 && (
               <div className="bg-[#FFF8F8] border border-[#FFE4E4] p-5 rounded-lg space-y-4">
-                <div className="flex items-center gap-2 text-jp-holiday font-bold">
-                  <AlertCircle className="w-5 h-5" />
-                  <span>❌ 儲存失敗：班表出現異常</span>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="flex items-center gap-2 text-jp-holiday font-bold">
+                    <AlertCircle className="w-5 h-5" />
+                    <span>❌ 儲存失敗：班表出現異常</span>
+                  </div>
+                  <button 
+                    onClick={() => saveScheduleToFirebase(schedule, false, true)}
+                    className="px-4 py-1.5 bg-jp-holiday text-white text-xs font-bold rounded shadow-sm hover:bg-red-600 transition-colors flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> 了解並強制儲存
+                  </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {complianceIssues.map((issue, idx) => (
