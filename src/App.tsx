@@ -87,7 +87,7 @@ export default function App() {
   const [storeBudget, setStoreBudget] = useState(INITIAL_BUDGET);
   // schedule[dateString][empId] = { shiftId, customTime, customHours }
   const [schedule, setSchedule] = useState<Record<string, Record<string, any>>>({}); 
-  const [complianceIssues, setComplianceIssues] = useState<string[]>([]);
+  const [complianceIssues, setComplianceIssues] = useState<{ reason: string, details: string[] }[]>([]);
   const [selectedCell, setSelectedCell] = useState<{ empId: string, date: string } | null>(null);
   const [editingEmp, setEditingEmp] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -186,15 +186,24 @@ export default function App() {
 
   // 3. 儲存班表
   const saveScheduleToFirebase = async (newSched: any, silent = true) => {
-    if (!silent) setSaveStatus('saving');
+    const issues = checkCompliance(newSched, currentDate);
+    if (issues.length > 0) {
+      if (!silent) {
+        setComplianceIssues(issues);
+        alert("❌ 儲存失敗：班表出現異常\n請查看下方的異常清單並修正。");
+      }
+      return;
+    }
+
+    if (!silent) {
+      setSaveStatus('saving');
+      setComplianceIssues([]); // 清除舊的異常
+    }
     
     try {
       const batch = writeBatch(db);
-      // 為了效能，我們僅儲存當前視圖週期的日期，或是傳入的特定變動
-      // 這裡我們抓取 newSched 中所有的 key (日期)
       const dates = Object.keys(newSched);
       
-      // Firestore batch 限制 500 筆，通常一週只有 7 筆，一個月 31 筆，遠低於限制
       dates.forEach(dateStr => {
         const docRef = doc(db, 'schedules', dateStr);
         batch.set(docRef, newSched[dateStr]);
@@ -205,6 +214,9 @@ export default function App() {
       if (!silent) {
         setSaveStatus('saved');
         setHasUnsavedChanges(false);
+        alert("✅ 最終檢查通過，班表可儲存。");
+        // 提示文字消失 (這裡透過清空 issues 達成)
+        setComplianceIssues([]);
       }
       console.log("Schedule saved successfully with batch");
     } catch (error) {
@@ -242,70 +254,149 @@ export default function App() {
 
   // --- 排班與法規邏輯 ---
   const checkCompliance = (currentSchedule: any, targetDate: Date) => {
-    let issues: string[] = [];
+    let issues: { reason: string, details: string[] }[] = [];
     const weekStart = startOfWeek(targetDate, { weekStartsOn: 1 });
     const weekEnd = endOfWeek(targetDate, { weekStartsOn: 1 });
     const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-    // 1. 一例一休 (針對正職)
-    employees.forEach(emp => {
-      if (emp.type === 'FT') {
-        let offDays = 0;
-        weekDays.forEach(d => {
-          const dateStr = format(d, 'yyyy-MM-dd');
-          const cell = currentSchedule[dateStr]?.[emp.id];
-          if (!cell || cell.shiftId === 'OFF') offDays++;
-        });
-        if (offDays < 2) {
-          issues.push(`${emp.name} 休息日不足2天 (違反一例一休)`);
-        }
-      }
-    });
-
-    // 2. 值班人員涵蓋率
+    // 1. 人力配置防呆：每一天的「早班」與「晚班」，都必須「至少有一位」值班人員。
     weekDays.forEach((day) => {
       const dateStr = format(day, 'yyyy-MM-dd');
-      const dayIndex = (day.getDay() + 6) % 7; // 0=Mon, 6=Sun
       let hasMorningDuty = false;
       let hasEveningDuty = false;
-      let hasAnyShift = false;
 
-      let requiredCountToday = 0;
-      shifts.forEach(s => { requiredCountToday += s.required[dayIndex]; });
-
-      if (requiredCountToday > 0) {
-        employees.forEach(emp => {
-          const cellObj = currentSchedule[dateStr]?.[emp.id];
-          if (cellObj && cellObj.shiftId && cellObj.shiftId !== 'OFF') {
-            const shiftData = shifts.find(s => s.id === cellObj.shiftId);
-            if (shiftData && shiftData.type !== 'OTHER') {
-              hasAnyShift = true;
-              if (emp.type === 'FT' || emp.type === 'PPT') {
-                const timeStr = cellObj.customTime || shiftData.time;
-                if (timeStr) {
-                  const startHour = parseInt(timeStr.split('-')[0], 10);
-                  const endHour = parseInt(timeStr.split('-')[1], 10);
-                  if (startHour <= 14) hasMorningDuty = true; 
-                  if (endHour >= 18) hasEveningDuty = true;   
-                }
+      employees.forEach(emp => {
+        const cell = currentSchedule[dateStr]?.[emp.id];
+        if (cell && cell.shiftId && cell.shiftId !== 'OFF') {
+          const shiftData = shifts.find(s => s.id === cell.shiftId);
+          if (shiftData && (emp.type === 'FT' || emp.type === 'PPT')) {
+            const timeStr = cell.customTime || shiftData.time;
+            if (timeStr) {
+              const parts = timeStr.split('-');
+              if (parts.length === 2) {
+                const startHour = parseInt(parts[0].split(':')[0], 10);
+                const endHour = parseInt(parts[1].split(':')[0], 10);
+                if (startHour <= 14) hasMorningDuty = true;
+                if (endHour >= 18) hasEveningDuty = true;
               }
             }
           }
-        });
+        }
+      });
 
-        if (hasAnyShift) {
-          const dayName = format(day, 'EEEE', { locale: zhTW });
-          if (!hasMorningDuty) issues.push(`${dayName} 缺乏早班值班人員 (需安排正職或PPT)`);
-          if (!hasEveningDuty) issues.push(`${dayName} 缺乏晚班值班人員 (需安排正職或PPT)`);
+      if (!hasMorningDuty) {
+        issues.push({ reason: '缺早班值班人員', details: [`日期：${format(day, 'MM/dd')}`, '說明：當日早班目前無人值班，請補齊人力。'] });
+      }
+      if (!hasEveningDuty) {
+        issues.push({ reason: '缺晚班值班人員', details: [`日期：${format(day, 'MM/dd')}`, '說明：當日晚班目前無人值班，請補齊人力。'] });
+      }
+    });
+
+    // 2. 勞基法規防呆：連續上班達 7 天
+    employees.forEach(emp => {
+      const sortedDates = Object.keys(currentSchedule).sort();
+      let consecutiveDays = 0;
+      let startDay = '';
+
+      sortedDates.forEach((dateStr) => {
+        const cell = currentSchedule[dateStr]?.[emp.id];
+        if (cell && cell.shiftId !== 'OFF') {
+          if (consecutiveDays === 0) startDay = dateStr;
+          consecutiveDays++;
+          if (consecutiveDays >= 7) {
+            issues.push({ 
+              reason: '連續七天上班', 
+              details: [`人員：${emp.name}`, `說明：手動微調後，${emp.name} 從 ${format(parseISO(startDay), 'MM/dd')} 至 ${format(parseISO(dateStr), 'MM/dd')} 被連續排班 ${consecutiveDays} 天，請調整休假日。`] 
+            });
+          }
+        } else {
+          consecutiveDays = 0;
+        }
+      });
+    });
+
+    // 3. 個人條件防呆：偏好休假/上課衝突
+    employees.forEach(emp => {
+      weekDays.forEach(day => {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const dayIndex = (day.getDay() + 6) % 7;
+        const cell = currentSchedule[dateStr]?.[emp.id];
+
+        if (cell && cell.shiftId !== 'OFF') {
+          // 偏好休假
+          if (emp.preferredOff.includes(dayIndex)) {
+            issues.push({ 
+              reason: '偏好休假衝突', 
+              details: [`人員：${emp.name}`, `日期：${format(day, 'MM/dd')}`, `說明：${emp.name} 該日設定為偏好休假，無法排班。`] 
+            });
+          }
+          // 上課衝突
+          if (emp.classSchedule && emp.classSchedule.length > 0) {
+            const todayClasses = emp.classSchedule.filter((c: any) => c.day === dayIndex);
+            const shiftData = shifts.find(s => s.id === cell.shiftId);
+            const timeStr = cell.customTime || shiftData?.time;
+            if (timeStr) {
+              const parts = timeStr.split('-');
+              if (parts.length === 2) {
+                const sStart = parseInt(parts[0].split(':')[0], 10);
+                const sEnd = parseInt(parts[1].split(':')[0], 10);
+                todayClasses.forEach((c: any) => {
+                  const cStart = parseInt(c.startTime.split(':')[0], 10);
+                  const cEnd = parseInt(c.endTime.split(':')[0], 10);
+                  if (sStart < cEnd && sEnd > cStart) {
+                    issues.push({ 
+                      reason: '上課衝突', 
+                      details: [`人員：${emp.name}`, `日期：${format(day, 'MM/dd')}`, `說明：${emp.name} 該時段 (${timeStr}) 需上課，無法排班。`] 
+                    });
+                  }
+                });
+              }
+            }
+          }
+        }
+      });
+    });
+
+    // 4. 11小時休息時間
+    employees.forEach(emp => {
+      const sortedDates = Object.keys(currentSchedule).sort();
+      for (let i = 1; i < sortedDates.length; i++) {
+        const dateStr = sortedDates[i];
+        const prevDateStr = sortedDates[i-1];
+        
+        const d1 = parseISO(prevDateStr);
+        const d2 = parseISO(dateStr);
+        if (addDays(d1, 1).getTime() !== d2.getTime()) continue;
+
+        const currentCell = currentSchedule[dateStr]?.[emp.id];
+        const prevCell = currentSchedule[prevDateStr]?.[emp.id];
+
+        if (currentCell && currentCell.shiftId !== 'OFF' && prevCell && prevCell.shiftId !== 'OFF') {
+          const currentShift = shifts.find(s => s.id === currentCell.shiftId);
+          const prevShift = shifts.find(s => s.id === prevCell.shiftId);
+          const currentTime = currentCell.customTime || currentShift?.time;
+          const prevTime = prevCell.customTime || prevShift?.time;
+
+          if (currentTime && prevTime) {
+            const currentStart = parseInt(currentTime.split('-')[0].split(':')[0], 10);
+            const prevEnd = parseInt(prevTime.split('-')[1].split(':')[0], 10);
+            const restHours = (24 - prevEnd) + currentStart;
+            if (restHours < 11) {
+              issues.push({ 
+                reason: '休息時間不足', 
+                details: [`人員：${emp.name}`, `日期：${format(d2, 'MM/dd')}`, `說明：與前一日下班時間休息僅 ${restHours} 小時 (法規要求 11 小時)。`] 
+              });
+            }
+          }
         }
       }
     });
 
-    // 3. 22:00-23:00 值班需求 (至少1值班+1任意)
+    // 5. 22:00-23:00 至少一值班+一支援
     weekDays.forEach((day) => {
       const dateStr = format(day, 'yyyy-MM-dd');
       let dutyCount = 0;
-      let totalCount = 0;
+      let supportCount = 0;
 
       employees.forEach(emp => {
         const cell = currentSchedule[dateStr]?.[emp.id];
@@ -313,52 +404,29 @@ export default function App() {
           const shiftData = shifts.find(s => s.id === cell.shiftId);
           const timeStr = cell.customTime || shiftData?.time;
           if (timeStr) {
-            const [start, end] = timeStr.split('-').map(t => parseInt(t.split(':')[0], 10));
-            // 檢查是否涵蓋 22:00-23:00
-            if (start <= 22 && end >= 23) {
-              totalCount++;
-              if (emp.type === 'FT' || emp.type === 'PPT') dutyCount++;
+            const parts = timeStr.split('-');
+            if (parts.length === 2) {
+              const start = parseInt(parts[0].split(':')[0], 10);
+              const end = parseInt(parts[1].split(':')[0], 10);
+              if (start <= 22 && end >= 23) {
+                if (emp.type === 'FT' || emp.type === 'PPT') dutyCount++;
+                else supportCount++;
+              }
             }
           }
         }
       });
 
-      if (totalCount > 0) {
-        if (dutyCount < 1) issues.push(`${format(day, 'MM/dd')} 22:00-23:00 缺乏值班人員`);
-        if (totalCount < 2) issues.push(`${format(day, 'MM/dd')} 22:00-23:00 總人數不足2人`);
+      if (dutyCount < 1 || (dutyCount + supportCount) < 2) {
+        issues.push({ 
+          reason: '22:00-23:00 人力不足', 
+          details: [`日期：${format(day, 'MM/dd')}`, `說明：當前人力為 ${dutyCount} 位值班、${supportCount} 位支援 (需至少 1 值班 + 1 支援)。`] 
+        });
       }
     });
 
-    // 4. 11小時休息時間
-    employees.forEach(emp => {
-      weekDays.forEach(day => {
-        const dateStr = format(day, 'yyyy-MM-dd');
-        const prevDateStr = format(subDays(day, 1), 'yyyy-MM-dd');
-        const currentCell = currentSchedule[dateStr]?.[emp.id];
-        const prevCell = currentSchedule[prevDateStr]?.[emp.id];
-
-        if (currentCell && currentCell.shiftId !== 'OFF' && prevCell && prevCell.shiftId !== 'OFF') {
-          const currentShift = shifts.find(s => s.id === currentCell.shiftId);
-          const prevShift = shifts.find(s => s.id === prevCell.shiftId);
-          
-          const currentTime = currentCell.customTime || currentShift?.time;
-          const prevTime = prevCell.customTime || prevShift?.time;
-
-          if (currentTime && prevTime) {
-            const currentStart = parseInt(currentTime.split('-')[0].split(':')[0], 10);
-            const prevEnd = parseInt(prevTime.split('-')[1].split(':')[0], 10);
-            
-            // 假設跨日的情況，prevEnd 到 currentStart 的距離
-            const restHours = (24 - prevEnd) + currentStart;
-            if (restHours < 11) {
-              issues.push(`${emp.name} 在 ${format(day, 'MM/dd')} 休息時間不足 11 小時 (僅 ${restHours}h)`);
-            }
-          }
-        }
-      });
-    });
-
     setComplianceIssues(issues);
+    return issues;
   };
 
   const handleAutoSchedule = (targetDate: Date) => {
@@ -698,13 +766,28 @@ export default function App() {
             </div>
 
             {complianceIssues.length > 0 && (
-              <div className="bg-[#FFF8F8] border border-[#FFE4E4] p-4 rounded-lg flex gap-3">
-                <AlertCircle className="w-5 h-5 text-jp-holiday shrink-0" />
-                <ul className="text-xs text-jp-holiday space-y-1">
+              <div className="bg-[#FFF8F8] border border-[#FFE4E4] p-5 rounded-lg space-y-4">
+                <div className="flex items-center gap-2 text-jp-holiday font-bold">
+                  <AlertCircle className="w-5 h-5" />
+                  <span>❌ 儲存失敗：班表出現異常</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {complianceIssues.map((issue, idx) => (
-                    <li key={idx}>{issue}</li>
+                    <div key={idx} className="bg-white border border-[#FFE4E4] p-3 rounded-md shadow-sm">
+                      <div className="text-xs font-bold text-jp-holiday mb-2 border-b border-[#FFE4E4] pb-1">
+                        - 異常原因：{issue.reason}
+                      </div>
+                      <div className="space-y-1">
+                        {issue.details.map((detail, dIdx) => (
+                          <div key={dIdx} className="text-[11px] text-jp-ink flex gap-2">
+                            <span className="text-jp-muted shrink-0">  •</span>
+                            <span>{detail}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             )}
 
@@ -913,7 +996,8 @@ export default function App() {
                             onChange={(e) => {
                               const newDaily = [...storeBudget.daily];
                               newDaily[idx] = parseInt(e.target.value) || 0;
-                              setStoreBudget({...storeBudget, daily: newDaily});
+                              const newWeekly = newDaily.reduce((a, b) => a + b, 0);
+                              setStoreBudget({...storeBudget, daily: newDaily, weekly: newWeekly});
                             }}
                             className="w-full text-center bg-white rounded border-jp-border text-sm py-1.5 focus:ring-jp-accent focus:border-jp-accent font-medium" 
                           />
@@ -926,12 +1010,9 @@ export default function App() {
                   <label className="block text-xs font-medium text-jp-muted mb-4 uppercase tracking-wider">週預算總額</label>
                   <div className="bg-jp-accent/5 p-4 rounded-lg border border-jp-accent/20 h-[84px] flex items-center">
                     <div className="relative w-full">
-                      <input 
-                        type="number" 
-                        value={storeBudget.weekly} 
-                        onChange={(e) => setStoreBudget({...storeBudget, weekly: parseInt(e.target.value) || 0})}
-                        className="w-full text-center bg-white rounded border-jp-accent/30 text-xl py-2 focus:ring-jp-accent focus:border-jp-accent font-bold text-jp-accent" 
-                      />
+                      <div className="w-full text-center bg-white rounded border border-jp-accent/30 text-xl py-2 font-bold text-jp-accent">
+                        {storeBudget.weekly}
+                      </div>
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-jp-accent font-medium">H</span>
                     </div>
                   </div>
